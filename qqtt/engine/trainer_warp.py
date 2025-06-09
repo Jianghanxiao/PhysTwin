@@ -551,19 +551,23 @@ class InvPhyTrainerWarp:
             )
 
     def on_press(self, key):
-        try:
-            self.pressed_keys.add(key.char)
-        except AttributeError:
-            pass
+        # Only process physical keyboard events if we're not using virtual keyboard
+        if not hasattr(self, 'use_virtual_keyboard') or not self.use_virtual_keyboard:
+            try:
+                self.pressed_keys.add(key.char)
+            except AttributeError:
+                pass
 
     def on_release(self, key):
-        try:
-            self.pressed_keys.remove(key.char)
-        except (KeyError, AttributeError):
+        # Only process physical keyboard events if we're not using virtual keyboard
+        if not hasattr(self, 'use_virtual_keyboard') or not self.use_virtual_keyboard:
             try:
-                self.pressed_keys.remove(str(key))
-            except KeyError:
-                pass
+                self.pressed_keys.remove(key.char)
+            except (KeyError, AttributeError):
+                try:
+                    self.pressed_keys.remove(str(key))
+                except KeyError:
+                    pass
 
     def get_target_change(self):
         target_change = np.zeros((self.n_ctrl_parts, 3))
@@ -862,6 +866,11 @@ class InvPhyTrainerWarp:
 
         result = self._overlay_hand_icons(result)
 
+        # Add text to indicate input mode
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        input_mode = "Virtual Keyboard" if hasattr(self, 'use_virtual_keyboard') and self.use_virtual_keyboard else "Physical Keyboard"
+        cv2.putText(result, f"Input: {input_mode}", (10, 30), font, 0.7, (0, 0, 0), 2)
+
         # overlay an transparent white mask on the bottom left and bottom right corners with width trans_width, and height trans_height
         trans_width = 160
         trans_height = 120
@@ -1032,6 +1041,8 @@ class InvPhyTrainerWarp:
         print("UI Controls:")
         print("- Set 1: WASD (XY movement), QE (Z movement)")
         print("- Set 2: IJKL (XY movement), UO (Z movement)")
+        print("- Supports both physical keyboard and virtual keyboard input through the window")
+        print("- Press ESC to exit")
         self.inv_ctrl = -1.0 if inv_ctrl else 1.0
         self.key_mappings = {
             # Set 1 controls
@@ -1065,9 +1076,13 @@ class InvPhyTrainerWarp:
             target_points = torch.from_numpy(vis_controller_points).to("cuda")
             self.hand_left_pos = self._find_closest_point(target_points)
 
+        # Start physical keyboard listener
         listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         listener.start()
         self.target_change = np.zeros((n_ctrl_parts, 3))
+        
+        # Flag to track if we're using virtual keyboard input
+        self.use_virtual_keyboard = False
 
         ############## Temporary timer ##############
         import time
@@ -1220,8 +1235,17 @@ class InvPhyTrainerWarp:
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             cv2.imshow("Interactive Playground", frame)
-            cv2.waitKey(1)
-
+            key = cv2.waitKey(1)
+            
+            # Handle virtual keyboard input through OpenCV window
+            if key != -1:
+                self.use_virtual_keyboard = True
+                key_char = chr(key & 0xFF).lower()
+                if key_char in self.key_mappings:
+                    self.pressed_keys.add(key_char)
+                elif key == 27:  # ESC key to exit
+                    break
+            
             frame_comp_time = (
                 frame_timer.stop() + frame_setup_time
             )  # Total frame compositing time
@@ -1274,6 +1298,11 @@ class InvPhyTrainerWarp:
 
             prev_target = current_target
             target_change = self.get_target_change()
+            
+            # Clear virtual keyboard keys after processing
+            if self.use_virtual_keyboard:
+                self.pressed_keys.clear()
+                
             if masks_ctrl_pts is not None:
                 for i in range(n_ctrl_parts):
                     if masks_ctrl_pts[i].sum() > 0:
