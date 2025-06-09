@@ -551,23 +551,19 @@ class InvPhyTrainerWarp:
             )
 
     def on_press(self, key):
-        # Only process physical keyboard events if we're not using virtual keyboard
-        if not hasattr(self, 'use_virtual_keyboard') or not self.use_virtual_keyboard:
-            try:
-                self.pressed_keys.add(key.char)
-            except AttributeError:
-                pass
+        try:
+            self.pressed_keys.add(key.char)
+        except AttributeError:
+            pass
 
     def on_release(self, key):
-        # Only process physical keyboard events if we're not using virtual keyboard
-        if not hasattr(self, 'use_virtual_keyboard') or not self.use_virtual_keyboard:
+        try:
+            self.pressed_keys.remove(key.char)
+        except (KeyError, AttributeError):
             try:
-                self.pressed_keys.remove(key.char)
-            except (KeyError, AttributeError):
-                try:
-                    self.pressed_keys.remove(str(key))
-                except KeyError:
-                    pass
+                self.pressed_keys.remove(str(key))
+            except KeyError:
+                pass
 
     def get_target_change(self):
         target_change = np.zeros((self.n_ctrl_parts, 3))
@@ -866,10 +862,10 @@ class InvPhyTrainerWarp:
 
         result = self._overlay_hand_icons(result)
 
-        # Add text to indicate input mode
+        # Add text to show active keys
         font = cv2.FONT_HERSHEY_SIMPLEX
-        input_mode = "Virtual Keyboard" if hasattr(self, 'use_virtual_keyboard') and self.use_virtual_keyboard else "Physical Keyboard"
-        cv2.putText(result, f"Input: {input_mode}", (10, 30), font, 0.7, (0, 0, 0), 2)
+        active_keys = ", ".join(sorted(pressed_keys)) if pressed_keys else "None"
+        cv2.putText(result, f"Active keys: {active_keys}", (10, 30), font, 0.7, (0, 0, 0), 2)
 
         # overlay an transparent white mask on the bottom left and bottom right corners with width trans_width, and height trans_height
         trans_width = 160
@@ -1041,7 +1037,7 @@ class InvPhyTrainerWarp:
         print("UI Controls:")
         print("- Set 1: WASD (XY movement), QE (Z movement)")
         print("- Set 2: IJKL (XY movement), UO (Z movement)")
-        print("- Supports both physical keyboard and virtual keyboard input through the window")
+        print("- Supports both physical keyboard and virtual keyboard input simultaneously")
         print("- Press ESC to exit")
         self.inv_ctrl = -1.0 if inv_ctrl else 1.0
         self.key_mappings = {
@@ -1081,8 +1077,8 @@ class InvPhyTrainerWarp:
         listener.start()
         self.target_change = np.zeros((n_ctrl_parts, 3))
         
-        # Flag to track if we're using virtual keyboard input
-        self.use_virtual_keyboard = False
+        # Track currently pressed keys from both physical and virtual inputs
+        self.pressed_keys = set()
 
         ############## Temporary timer ##############
         import time
@@ -1239,10 +1235,12 @@ class InvPhyTrainerWarp:
             
             # Handle virtual keyboard input through OpenCV window
             if key != -1:
-                self.use_virtual_keyboard = True
                 key_char = chr(key & 0xFF).lower()
                 if key_char in self.key_mappings:
+                    # Store virtual key with timestamp for auto-release
                     self.pressed_keys.add(key_char)
+                    # Schedule key release after a short delay
+                    threading.Timer(0.1, lambda k=key_char: self.pressed_keys.discard(k)).start()
                 elif key == 27:  # ESC key to exit
                     break
             
@@ -1298,10 +1296,6 @@ class InvPhyTrainerWarp:
 
             prev_target = current_target
             target_change = self.get_target_change()
-            
-            # Clear virtual keyboard keys after processing
-            if self.use_virtual_keyboard:
-                self.pressed_keys.clear()
                 
             if masks_ctrl_pts is not None:
                 for i in range(n_ctrl_parts):
