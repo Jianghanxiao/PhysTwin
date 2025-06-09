@@ -552,12 +552,14 @@ class InvPhyTrainerWarp:
 
     def on_press(self, key):
         try:
+            # Add physical keyboard key to pressed_keys set
             self.pressed_keys.add(key.char)
         except AttributeError:
             pass
 
     def on_release(self, key):
         try:
+            # Remove physical keyboard key from pressed_keys set
             self.pressed_keys.remove(key.char)
         except (KeyError, AttributeError):
             try:
@@ -567,6 +569,7 @@ class InvPhyTrainerWarp:
 
     def get_target_change(self):
         target_change = np.zeros((self.n_ctrl_parts, 3))
+        # Process all currently active keys (both physical and virtual)
         for key in self.pressed_keys:
             if key in self.key_mappings:
                 idx, change = self.key_mappings[key]
@@ -1038,6 +1041,7 @@ class InvPhyTrainerWarp:
         print("- Set 1: WASD (XY movement), QE (Z movement)")
         print("- Set 2: IJKL (XY movement), UO (Z movement)")
         print("- Supports both physical keyboard and virtual keyboard input simultaneously")
+        print("- Multiple keys can be pressed at the same time")
         print("- Press ESC to exit")
         self.inv_ctrl = -1.0 if inv_ctrl else 1.0
         self.key_mappings = {
@@ -1072,13 +1076,15 @@ class InvPhyTrainerWarp:
             target_points = torch.from_numpy(vis_controller_points).to("cuda")
             self.hand_left_pos = self._find_closest_point(target_points)
 
+        # Initialize keyboard tracking variables
+        self.pressed_keys = set()  # Set to track all active keys (both physical and virtual)
+        self.virtual_keys = {}     # Dictionary to track virtual keys with timestamps
+        self.virtual_key_duration = 0.2  # Virtual key press duration in seconds
+        self.target_change = np.zeros((n_ctrl_parts, 3))
+        
         # Start physical keyboard listener
         listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         listener.start()
-        self.target_change = np.zeros((n_ctrl_parts, 3))
-        
-        # Track currently pressed keys from both physical and virtual inputs
-        self.pressed_keys = set()
 
         ############## Temporary timer ##############
         import time
@@ -1236,13 +1242,20 @@ class InvPhyTrainerWarp:
             # Handle virtual keyboard input through OpenCV window
             if key != -1:
                 key_char = chr(key & 0xFF).lower()
+                current_time = time.time()
                 if key_char in self.key_mappings:
-                    # Store virtual key with timestamp for auto-release
+                    # Store virtual key with timestamp
+                    self.virtual_keys[key_char] = current_time
                     self.pressed_keys.add(key_char)
-                    # Schedule key release after a short delay
-                    threading.Timer(0.1, lambda k=key_char: self.pressed_keys.discard(k)).start()
                 elif key == 27:  # ESC key to exit
                     break
+                    
+            # Check for expired virtual keys and remove them
+            current_time = time.time()
+            expired_keys = [k for k, t in self.virtual_keys.items() if current_time - t > self.virtual_key_duration]
+            for k in expired_keys:
+                self.pressed_keys.discard(k)
+                del self.virtual_keys[k]
             
             frame_comp_time = (
                 frame_timer.stop() + frame_setup_time
