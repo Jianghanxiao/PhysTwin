@@ -553,17 +553,23 @@ class InvPhyTrainerWarp:
     def on_press(self, key):
         try:
             # Add physical keyboard key to pressed_keys set
-            self.pressed_keys.add(key.char)
+            key_char = key.char.lower()  # Normalize to lowercase
+            if key_char in self.key_mappings:
+                self.pressed_keys.add(key_char)
         except AttributeError:
             pass
 
     def on_release(self, key):
         try:
             # Remove physical keyboard key from pressed_keys set
-            self.pressed_keys.remove(key.char)
+            key_char = key.char.lower()  # Normalize to lowercase
+            if key_char in self.pressed_keys:
+                self.pressed_keys.remove(key_char)
         except (KeyError, AttributeError):
             try:
-                self.pressed_keys.remove(str(key))
+                key_str = str(key).lower()
+                if key_str in self.pressed_keys:
+                    self.pressed_keys.remove(key_str)
             except KeyError:
                 pass
 
@@ -869,6 +875,14 @@ class InvPhyTrainerWarp:
         font = cv2.FONT_HERSHEY_SIMPLEX
         active_keys = ", ".join(sorted(pressed_keys)) if pressed_keys else "None"
         cv2.putText(result, f"Active keys: {active_keys}", (10, 30), font, 0.7, (0, 0, 0), 2)
+        
+        # Add text to show which keys are being handled by physical vs virtual keyboard
+        physical_keys = set([k for k in pressed_keys if k not in self.virtual_keys])
+        virtual_keys = set([k for k in pressed_keys if k in self.virtual_keys])
+        physical_text = ", ".join(sorted(physical_keys)) if physical_keys else "None"
+        virtual_text = ", ".join(sorted(virtual_keys)) if virtual_keys else "None"
+        cv2.putText(result, f"Physical: {physical_text}", (10, 60), font, 0.7, (0, 0, 0), 2)
+        cv2.putText(result, f"Virtual: {virtual_text}", (10, 90), font, 0.7, (0, 0, 0), 2)
 
         # overlay an transparent white mask on the bottom left and bottom right corners with width trans_width, and height trans_height
         trans_width = 160
@@ -1079,7 +1093,7 @@ class InvPhyTrainerWarp:
         # Initialize keyboard tracking variables
         self.pressed_keys = set()  # Set to track all active keys (both physical and virtual)
         self.virtual_keys = {}     # Dictionary to track virtual keys with timestamps
-        self.virtual_key_duration = 0.03  # Virtual key press duration in seconds
+        self.virtual_key_duration = 0.5  # Virtual key press duration in seconds
         self.target_change = np.zeros((n_ctrl_parts, 3))
         
         # Start physical keyboard listener
@@ -1242,20 +1256,27 @@ class InvPhyTrainerWarp:
             # Handle virtual keyboard input through OpenCV window
             if key != -1:
                 key_char = chr(key & 0xFF).lower()
-                current_time = time.time()
                 if key_char in self.key_mappings:
-                    # Store virtual key with timestamp
-                    self.virtual_keys[key_char] = current_time
+                    # Store virtual key with timestamp - refresh timestamp if already pressed
+                    self.virtual_keys[key_char] = time.time()
                     self.pressed_keys.add(key_char)
                 elif key == 27:  # ESC key to exit
                     break
-                    
-            # Check for expired virtual keys and remove them
+            
+            # Process all keyboard inputs (both physical and virtual)
+            # For virtual keys, check if they're still active based on timestamp
             current_time = time.time()
-            expired_keys = [k for k, t in self.virtual_keys.items() if current_time - t > self.virtual_key_duration]
-            for k in expired_keys:
-                self.pressed_keys.discard(k)
-                del self.virtual_keys[k]
+            keys_to_remove = []
+            for k, press_time in self.virtual_keys.items():
+                if current_time - press_time > self.virtual_key_duration:
+                    keys_to_remove.append(k)
+            
+            # Remove expired virtual keys
+            for k in keys_to_remove:
+                if k in self.pressed_keys:
+                    self.pressed_keys.discard(k)
+                if k in self.virtual_keys:
+                    del self.virtual_keys[k]
             
             frame_comp_time = (
                 frame_timer.stop() + frame_setup_time
