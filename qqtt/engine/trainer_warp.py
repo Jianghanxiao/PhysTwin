@@ -1093,7 +1093,7 @@ class InvPhyTrainerWarp:
         # Initialize keyboard tracking variables
         self.pressed_keys = set()  # Set to track all active keys (both physical and virtual)
         self.virtual_keys = {}     # Dictionary to track virtual keys with timestamps
-        self.virtual_key_duration = 0.5  # Virtual key press duration in seconds
+        self.virtual_key_duration = 0.03  # Virtual key press duration in seconds
         self.target_change = np.zeros((n_ctrl_parts, 3))
         
         # Start physical keyboard listener
