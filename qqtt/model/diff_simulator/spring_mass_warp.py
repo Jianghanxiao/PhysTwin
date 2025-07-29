@@ -335,7 +335,7 @@ def build_resting_collision_pairs(
 
     x1 = x[i]
 
-    neighbors = wp.hash_grid_query(grid, x1, collision_dist * 2.0)
+    neighbors = wp.hash_grid_query(grid, x1, collision_dist * 5.0)
     for index in neighbors:
         if index < i:
             resting_collision_pairs[i][index] = wp.bool(1)
