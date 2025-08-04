@@ -21,6 +21,8 @@ class Config:
         self.collide_object_elas = 0.7
         self.collide_object_fric = 0.3
 
+        self.controller_spring_Y=None
+
         self.object_radius = 0.02
         self.object_max_neighbours = 30
         self.controller_radius = 0.04

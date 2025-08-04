@@ -170,6 +170,8 @@ class InvPhyTrainerWarp:
             gt_object_visibilities=self.object_visibilities,
             gt_object_motions_valid=self.object_motions_valid,
             self_collision=cfg.self_collision,
+            controller_spring_Y=cfg.controller_spring_Y,
+            num_object_springs=self.num_object_springs,
         )
 
         self.simulator.set_init_state(

@@ -266,7 +266,10 @@ def update_potential_collision(
     neighbors = wp.hash_grid_query(grid, x1, collision_dist * 5.0)
     for index in neighbors:
         if index != i:
-            if resting_collision_pairs[i][index] == True or resting_collision_pairs[index][i] == True:
+            if (
+                resting_collision_pairs[i][index] == True
+                or resting_collision_pairs[index][i] == True
+            ):
                 continue
             x2 = x[index]
             mask2 = masks[index]
@@ -751,6 +754,8 @@ class SpringMassSystemWarp:
         disable_backward=False,
         static_meshes=None,
         dynamic_points=None,
+        controller_spring_Y=None,
+        num_object_springs=None,
     ):
         logger.info(f"[SIMULATION]: Initialize the Spring-Mass System")
         self.device = cfg.device
@@ -904,10 +909,18 @@ class SpringMassSystemWarp:
                 (self.num_original_points), dtype=wp.int32, requires_grad=False
             )
 
+        spring_Y_array = torch.log(
+            torch.tensor(spring_Y, dtype=torch.float32, device=self.device)
+        ) * torch.ones(self.n_springs, dtype=torch.float32, device=self.device)
+
+        if controller_spring_Y is not None:
+            spring_Y_array[num_object_springs:] = torch.log(
+                torch.tensor(controller_spring_Y, dtype=torch.float32, device=self.device)
+            )
+            
         # Parameter to be optimized
         self.wp_spring_Y = wp.from_torch(
-            torch.log(torch.tensor(spring_Y, dtype=torch.float32, device=self.device))
-            * torch.ones(self.n_springs, dtype=torch.float32, device=self.device),
+            spring_Y_array,
             requires_grad=True,
         )
         self.wp_collide_elas = wp.from_torch(
@@ -1030,9 +1043,9 @@ class SpringMassSystemWarp:
                 self.wp_states[0].wp_x,
                 self.collision_dist,
                 self.collision_grid.id,
-                ],
-            outputs=[self.resting_collision_pairs],            
-        )   
+            ],
+            outputs=[self.resting_collision_pairs],
+        )
 
     def set_controller_target(self, frame_idx, pure_inference=False):
         if self.controller_points is not None:

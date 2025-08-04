@@ -202,14 +202,12 @@ class OptimizerCMA:
 
     def optimize(self, max_iter=100):
         # Initialize the parameters
-        init_global_spring_Y = self.normalize(
-            cfg.init_spring_Y, cfg.spring_Y_min, cfg.spring_Y_max
-        )
-        init_object_radius = self.normalize(cfg.object_radius, 0.01, 0.05)
-        init_object_max_neighbours = self.normalize(cfg.object_max_neighbours, 10, 50)
-        init_controller_radius = self.normalize(cfg.controller_radius, 0.01, 0.08)
+        init_global_spring_Y = self.normalize(cfg.init_spring_Y, cfg.spring_Y_min, cfg.spring_Y_max)
+        init_object_radius = self.normalize(cfg.object_radius, 0.01, 0.1)
+        init_object_max_neighbours = self.normalize(cfg.object_max_neighbours, 5, 60)
+        init_controller_radius = self.normalize(cfg.controller_radius, 0.01, 0.2)
         init_controller_max_neighbours = self.normalize(
-            cfg.controller_max_neighbours, 10, 80
+            cfg.controller_max_neighbours, 5, 100
         )
         init_collide_elas = cfg.collide_elas
         init_collide_fric = self.normalize(cfg.collide_fric, 0, 2)
@@ -218,6 +216,9 @@ class OptimizerCMA:
         init_collision_dist = self.normalize(cfg.collision_dist, 0.01, 0.05)
         init_drag_damping = self.normalize(cfg.drag_damping, 0, 20)
         init_dashpot_damping = self.normalize(cfg.dashpot_damping, 0, 200)
+        init_contorller_spring_Y = self.normalize(
+            cfg.init_spring_Y, cfg.spring_Y_min, cfg.spring_Y_max
+        )
 
         x_init = [
             init_global_spring_Y,
@@ -232,6 +233,7 @@ class OptimizerCMA:
             init_collision_dist,
             init_drag_damping,
             init_dashpot_damping,
+            init_contorller_spring_Y,
         ]
 
         self.error_func(
@@ -251,10 +253,10 @@ class OptimizerCMA:
         final_global_spring_Y = self.denormalize(
             optimal_x[0], cfg.spring_Y_min, cfg.spring_Y_max
         )
-        final_object_radius = self.denormalize(optimal_x[1], 0.01, 0.05)
-        final_object_max_neighbours = int(self.denormalize(optimal_x[2], 10, 50))
-        final_controller_radius = self.denormalize(optimal_x[3], 0.01, 0.08)
-        final_controller_max_neighbours = int(self.denormalize(optimal_x[4], 10, 80))
+        final_object_radius = self.denormalize(optimal_x[1], 0.01, 0.1)
+        final_object_max_neighbours = int(self.denormalize(optimal_x[2], 5, 60))
+        final_controller_radius = self.denormalize(optimal_x[3], 0.01, 0.2)
+        final_controller_max_neighbours = int(self.denormalize(optimal_x[4], 5, 100))
         final_collide_elas = optimal_x[5]
         final_collide_fric = self.denormalize(optimal_x[6], 0, 2)
         final_collide_object_elas = optimal_x[7]
@@ -262,6 +264,9 @@ class OptimizerCMA:
         final_collision_dist = self.denormalize(optimal_x[9], 0.01, 0.05)
         final_drag_damping = self.denormalize(optimal_x[10], 0, 20)
         final_dashpot_damping = self.denormalize(optimal_x[11], 0, 200)
+        controller_spring_Y = self.denormalize(
+            optimal_x[12], cfg.spring_Y_min, cfg.spring_Y_max
+        )
 
         self.error_func(
             optimal_x,
@@ -282,6 +287,7 @@ class OptimizerCMA:
         optimal_results["collision_dist"] = final_collision_dist
         optimal_results["drag_damping"] = final_drag_damping
         optimal_results["dashpot_damping"] = final_dashpot_damping
+        optimal_results["controller_spring_Y"] = controller_spring_Y
 
         # Save out all the initialized parameters
         with open(f"{cfg.base_dir}/optimal_params.pkl", "wb") as f:
@@ -291,10 +297,10 @@ class OptimizerCMA:
         global_spring_Y = self.denormalize(
             parameters[0], cfg.spring_Y_min, cfg.spring_Y_max
         )
-        object_radius = self.denormalize(parameters[1], 0.01, 0.05)
-        object_max_neighbours = int(self.denormalize(parameters[2], 10, 50))
-        controller_radius = self.denormalize(parameters[3], 0.01, 0.08)
-        controller_max_neighbours = int(self.denormalize(parameters[4], 10, 80))
+        object_radius = self.denormalize(parameters[1], 0.01, 0.1)
+        object_max_neighbours = int(self.denormalize(parameters[2], 5, 60))
+        controller_radius = self.denormalize(parameters[3], 0.01, 0.2)
+        controller_max_neighbours = int(self.denormalize(parameters[4], 5, 100))
         collide_elas = parameters[5]
         collide_fric = self.denormalize(parameters[6], 0, 2)
         collide_object_elas = parameters[7]
@@ -302,6 +308,9 @@ class OptimizerCMA:
         collision_dist = self.denormalize(parameters[9], 0.01, 0.05)
         drag_damping = self.denormalize(parameters[10], 0, 20)
         dashpot_damping = self.denormalize(parameters[11], 0, 200)
+        controller_spring_Y = self.denormalize(
+            parameters[12], cfg.spring_Y_min, cfg.spring_Y_max
+        )
 
         # Initialize the vertices, springs, rest lengths and masses
         if self.controller_points is None:
@@ -353,6 +362,8 @@ class OptimizerCMA:
             gt_object_motions_valid=self.object_motions_valid,
             self_collision=cfg.self_collision,
             disable_backward=True,
+            controller_spring_Y=controller_spring_Y,
+            num_object_springs=self.num_object_springs,
         )
 
         self.simulator.set_init_state(
