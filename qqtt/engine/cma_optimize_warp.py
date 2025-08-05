@@ -202,7 +202,9 @@ class OptimizerCMA:
 
     def optimize(self, max_iter=100):
         # Initialize the parameters
-        init_global_spring_Y = self.normalize(cfg.init_spring_Y, cfg.spring_Y_min, cfg.spring_Y_max)
+        init_global_spring_Y = self.normalize(
+            cfg.init_spring_Y, cfg.spring_Y_min, cfg.spring_Y_max
+        )
         init_object_radius = self.normalize(cfg.object_radius, 0.01, 0.1)
         init_object_max_neighbours = self.normalize(cfg.object_max_neighbours, 5, 60)
         init_controller_radius = self.normalize(cfg.controller_radius, 0.01, 0.2)
@@ -378,9 +380,6 @@ class OptimizerCMA:
                 wp.to_torch(self.simulator.wp_states[0].wp_x, requires_grad=False).cpu()
             ]
 
-        if cfg.data_type == "real":
-            self.simulator.set_acc_count(False)
-
         total_loss = 0.0
         if not visualize:
             # Only optimize on the train frames
@@ -408,13 +407,6 @@ class OptimizerCMA:
             if visualize == True:
                 x = wp.to_torch(self.simulator.wp_states[-1].wp_x, requires_grad=False)
                 vertices.append(x.cpu())
-
-            if cfg.data_type == "real":
-                if wp.to_torch(self.simulator.acc_count, requires_grad=False)[0] == 0:
-                    self.simulator.set_acc_count(True)
-
-                # Update the prev_acc used to calculate the acceleration loss
-                self.simulator.update_acc()
 
             loss = wp.to_torch(self.simulator.loss, requires_grad=False)
             total_loss += loss.item()
