@@ -184,6 +184,7 @@ class InvPhyTrainerWarp:
             self.optimizer = torch.optim.Adam(
                 [
                     wp.to_torch(self.simulator.wp_spring_Y),
+                    wp.to_torch(self.simulator.wp_gate_logit),
                     wp.to_torch(self.simulator.wp_collide_elas),
                     wp.to_torch(self.simulator.wp_collide_fric),
                     wp.to_torch(self.simulator.wp_collide_object_elas),
@@ -196,7 +197,7 @@ class InvPhyTrainerWarp:
             if "debug" not in cfg.run_name:
                 wandb.init(
                     # set the wandb project where this run will be logged
-                    project="phystwin_rest_state_5_collision_all",
+                    project="phystwin_test_gumble",
                     name=cfg.run_name,
                     config=cfg.to_dict(),
                 )
@@ -331,6 +332,11 @@ class InvPhyTrainerWarp:
                 torch.tensor(masses, dtype=torch.float32, device=cfg.device),
                 num_object_springs,
             )
+        
+    def tau_by_epoch(self, epoch, tau0=1.0, tau_min=0.1, total_epochs=100):
+        k = - (1 / total_epochs) * np.log(tau_min / tau0)
+        tau = tau0 * np.exp(-k * epoch)
+        return max(tau, tau_min)
 
     def train(self, start_epoch=-1):
         # Render the initial visualization
@@ -341,6 +347,9 @@ class InvPhyTrainerWarp:
         best_epoch = None
         # Train the model with the physical simulator
         for i in range(start_epoch + 1, cfg.iterations):
+            temperature = self.tau_by_epoch(i, total_epochs=cfg.iterations)
+            self.simulator.set_temperature(temperature)
+
             total_loss = 0.0
             if cfg.data_type == "real":
                 total_chamfer_loss = 0.0
@@ -445,6 +454,9 @@ class InvPhyTrainerWarp:
                     "spring_Y": torch.exp(
                         wp.to_torch(self.simulator.wp_spring_Y, requires_grad=False)
                     ),
+                    "gate_logit": wp.to_torch(
+                        self.simulator.wp_gate_logit, requires_grad=False
+                    ),
                     "collide_elas": wp.to_torch(
                         self.simulator.wp_collide_elas, requires_grad=False
                     ),
@@ -534,6 +546,9 @@ class InvPhyTrainerWarp:
         vertices = [
             wp.to_torch(self.simulator.wp_states[0].wp_x, requires_grad=False).cpu()
         ]
+
+        # Set it to test mode
+        self.simulator.set_temperature(-1)
 
         with wp.ScopedTimer("simulate"):
             for i in tqdm(range(1, frame_len)):
@@ -1499,6 +1514,7 @@ class InvPhyTrainerWarp:
         collide_object_elas = checkpoint["collide_object_elas"]
         collide_object_fric = checkpoint["collide_object_fric"]
         num_object_springs = checkpoint["num_object_springs"]
+        gate_logit = checkpoint["gate_logit"]
 
         assert (
             len(spring_Y) == self.simulator.n_springs
@@ -1510,6 +1526,8 @@ class InvPhyTrainerWarp:
         self.init_vertices = self.init_vertices[: self.num_all_points]
         self.init_masses = self.init_masses[: self.num_all_points]
         self.controller_points = None
+        gate_logit = gate_logit[: self.num_object_springs]
+
 
         self.simulator = SpringMassSystemWarp(
             self.init_vertices,
@@ -1544,6 +1562,7 @@ class InvPhyTrainerWarp:
         )
 
         self.simulator.set_spring_Y(torch.log(spring_Y).detach().clone())
+        self.simulator.set_gate_logit(gate_logit.detach().clone())
         self.simulator.set_collide(
             collide_elas.detach().clone(), collide_fric.detach().clone()
         )

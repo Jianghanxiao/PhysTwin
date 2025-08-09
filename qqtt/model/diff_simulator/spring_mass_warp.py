@@ -107,6 +107,8 @@ def eval_springs(
     springs: wp.array(dtype=wp.vec2i),
     rest_lengths: wp.array(dtype=float),
     spring_Y: wp.array(dtype=float),
+    gate_logit: wp.array(dtype=float),
+    temperature: wp.array(dtype=float),
     dashpot_damping: float,
     spring_Y_min: float,
     spring_Y_max: float,
@@ -139,8 +141,23 @@ def eval_springs(
 
         d = dis / wp.max(dis_len, 1e-6)
 
+        # Train mode using Gumble Sigmoid
+        if temperature[0] > 0.0:
+            # sample Gumbel noise: -log(-log(U))
+            random = wp.rand_init(42, tid)
+            sample_num = wp.randf(random)
+            gumbel = -wp.log(-wp.log(sample_num + 1e-8) + 1e-8)
+
+            temp = (gate_logit[tid] + gumbel) / temperature[0]
+            gate = 1.0 / (1.0 + wp.exp(-temp))
+        else:
+            if gate_logit[tid] > 0.0:
+                gate = 1.0
+            else:
+                gate = 0.0
+
         spring_force = (
-            wp.clamp(wp.exp(spring_Y[tid]), low=spring_Y_min, high=spring_Y_max)
+            wp.clamp(gate * wp.exp(spring_Y[tid]), low=spring_Y_min, high=spring_Y_max)
             * (dis_len / rest - 1.0)
             * d
         )
@@ -321,6 +338,7 @@ def object_collision(
         v_new[tid] = v1 - J_average / m1
     else:
         v_new[tid] = v1
+
 
 # Calcualte the rest state pairs
 @wp.kernel(enable_backward=False)
@@ -915,14 +933,30 @@ class SpringMassSystemWarp:
 
         if controller_spring_Y is not None:
             spring_Y_array[num_object_springs:] = torch.log(
-                torch.tensor(controller_spring_Y, dtype=torch.float32, device=self.device)
+                torch.tensor(
+                    controller_spring_Y, dtype=torch.float32, device=self.device
+                )
             )
-            
+
         # Parameter to be optimized
         self.wp_spring_Y = wp.from_torch(
             spring_Y_array,
             requires_grad=True,
         )
+
+        gate_logit = torch.empty(
+            spring_Y_array.shape, dtype=torch.float32, device=self.device
+        )
+        torch.nn.init.normal_(gate_logit, mean=0, std=0.01)
+        self.wp_gate_logit = wp.from_torch(
+            gate_logit,
+            requires_grad=True,
+        )
+        self.temperature = wp.from_torch(
+            -1 * torch.ones(1, dtype=torch.float32, device=self.device),
+            requires_grad=False,
+        )
+
         self.wp_collide_elas = wp.from_torch(
             torch.tensor([collide_elas], dtype=torch.float32, device=self.device),
             requires_grad=cfg.collision_learn,
@@ -1252,6 +1286,8 @@ class SpringMassSystemWarp:
                     self.wp_springs,
                     self.wp_rest_lengths,
                     self.wp_spring_Y,
+                    self.wp_gate_logit,
+                    self.temperature,
                     self.dashpot_damping,
                     self.spring_Y_min,
                     self.spring_Y_max,
@@ -1442,6 +1478,16 @@ class SpringMassSystemWarp:
             self.acc_loss.zero_()
         self.loss.zero_()
 
+    def set_temperature(self, temperature: float):
+        wp.launch(
+            copy_float,
+            dim=1,
+            inputs=[
+                torch.tensor([temperature], dtype=torch.float32, device=self.device)
+            ],
+            outputs=[self.temperature],
+        )
+
     # Functions used to load the parmeters
     def set_spring_Y(self, spring_Y):
         # assert spring_Y.shape[0] == self.n_springs
@@ -1450,6 +1496,14 @@ class SpringMassSystemWarp:
             dim=self.n_springs,
             inputs=[spring_Y],
             outputs=[self.wp_spring_Y],
+        )
+
+    def set_gate_logit(self, gate_logit):
+        wp.launch(
+            copy_float,
+            dim=self.n_springs,
+            inputs=[gate_logit],
+            outputs=[self.wp_gate_logit],
         )
 
     def set_collide(self, collide_elas, collide_fric):
