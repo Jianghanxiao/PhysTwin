@@ -1,3 +1,5 @@
+# /workspace/PhysTwin/qqtt/engine/trainer_warp.py
+
 from qqtt.data import RealData, SimpleData
 from qqtt.utils import logger, visualize_pc, cfg
 from qqtt.model.diff_simulator import (
@@ -17,6 +19,7 @@ from pynput import keyboard
 import pyrender
 import trimesh
 import matplotlib.pyplot as plt
+import glob
 
 from gaussian_splatting.scene.gaussian_model import GaussianModel
 from gaussian_splatting.scene.cameras import Camera
@@ -41,6 +44,9 @@ import time
 import threading
 import time
 
+from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[3]  # qqtt/engine -> PhysTwinFork -> third_party -> long_horizon_mpc
+DATA_DIR = REPO_ROOT / "data"
 
 class InvPhyTrainerWarp:
     def __init__(
@@ -59,6 +65,19 @@ class InvPhyTrainerWarp:
         cfg.run_name = base_dir.split("/")[-1]
         cfg.train_frame = train_frame
 
+        # print("📦 Loading training data from:", data_path)
+        # with open(data_path, 'rb') as f:
+        #     data = pickle.load(f)
+        # print("📦 Keys in final_data.pkl:", data.keys())
+
+        # print("✅ InvPhyTrainerWarp initialized")
+        # print("   - data_path =", data_path)
+        # print("   - base_dir =", base_dir)
+        # print("   - pure_inference_mode =", pure_inference_mode)
+        # print("📐 controller_points shape:", data['controller_points'].shape)
+        # print("📐 object_points shape:", data['object_points'].shape)
+        # print("📐 surface_points shape:", data['surface_points'].shape)
+                
         self.init_masks = None
         self.init_velocities = None
         # Load the data
@@ -101,8 +120,10 @@ class InvPhyTrainerWarp:
 
         # Initialize the vertices, springs, rest lengths and masses
         if self.controller_points is None:
+            # print("[DEBUG] self.controller_points is None")
             firt_frame_controller_points = None
         else:
+            # print("[DEBUG] self.controller_points is not None, do _init_start()")
             firt_frame_controller_points = self.controller_points[0]
         (
             self.init_vertices,
@@ -193,8 +214,10 @@ class InvPhyTrainerWarp:
     ):
         object_points = object_points.cpu().numpy()
         if controller_points is not None:
+            # print("[DEBUG] controller_points is not None, controller_points = controller_points.cpu().numpy()")
             controller_points = controller_points.cpu().numpy()
         if mask is None:
+            # print("[DEBUG] mask is None")
             object_pcd = o3d.geometry.PointCloud()
             object_pcd.points = o3d.utility.Vector3dVector(object_points)
             pcd_tree = o3d.geometry.KDTreeFlann(object_pcd)
@@ -302,6 +325,7 @@ class InvPhyTrainerWarp:
                 num_object_springs,
             )
 
+ 
     def train(self, start_epoch=-1):
         # Render the initial visualization
         video_path = f"{cfg.base_dir}/train/init.mp4"
@@ -448,6 +472,8 @@ class InvPhyTrainerWarp:
                     logger.info(
                         f"Latest best model saved: epoch {best_epoch} with loss {best_loss}"
                     )
+                    
+                    # print("🔧 Loading model checkpoint:", best_model_path)
 
                 torch.save(cur_model, f"{cfg.base_dir}/train/iter_{i}.pth")
                 logger.info(
@@ -552,7 +578,30 @@ class InvPhyTrainerWarp:
 
     def on_press(self, key):
         try:
-            self.pressed_keys.add(key.char)
+            k = key.char
+            self.pressed_keys.add(k)
+            print(f"[key press] Detected key: {k}")
+            if k == "p":
+                print("[INFO] Saving target state...")
+                self.save_target_state(
+                    self.gaussians,
+                    self.simulator.controller_points[0],
+                    wp.to_torch(self.simulator.wp_states[-1].wp_x, requires_grad=False),
+                    "./mpc_target_U/"
+                )
+            if k == "t":
+                print("[INFO] Saving custom init state...")
+                print("springs", self.simulator.wp_springs.shape)
+                print("rest_lengths", self.simulator.wp_rest_lengths.shape)
+                self.save_init_state(
+                    gaussians=self.gaussians,
+                    ctrl_pts=self.simulator.controller_points[0],
+                    wp_x=self.simulator.wp_states[-1].wp_x,
+                    springs=self.simulator.wp_springs,
+                    rest_lengths=self.simulator.wp_rest_lengths
+                )
+        except Exception as e:
+            print(f"[ERROR] Key handler error: {e}")       
         except AttributeError:
             pass
 
@@ -937,7 +986,7 @@ class InvPhyTrainerWarp:
         return self.structure_points[min_idx].unsqueeze(0)
 
     def interactive_playground(
-        self, model_path, gs_path, n_ctrl_parts=1, inv_ctrl=False, virtual_key_input=False
+        self, model_path, gs_path, n_ctrl_parts=1, inv_ctrl=False
     ):
         # Load the model
         logger.info(f"Load model from {model_path}")
@@ -988,6 +1037,7 @@ class InvPhyTrainerWarp:
         gaussians.load_ply(gs_path)
         gaussians = remove_gaussians_with_low_opacity(gaussians, 0.1)
         gaussians.isotropic = True
+        self.gaussians = gaussians
         current_pos = gaussians.get_xyz
         current_rot = gaussians.get_rotation
         use_white_background = True  # set to True for white background
@@ -1021,7 +1071,7 @@ class InvPhyTrainerWarp:
             center1 = center1 / center1[-1]
             center2 = center2 / center2[-1]
             if center1[0] > center2[0]:
-                print("Switching the control parts")
+                # print("Switching the control parts")
                 masks_ctrl_pts = [masks_ctrl_pts[1], masks_ctrl_pts[0]]
         else:
             masks_ctrl_pts = None
@@ -1065,11 +1115,6 @@ class InvPhyTrainerWarp:
             target_points = torch.from_numpy(vis_controller_points).to("cuda")
             self.hand_left_pos = self._find_closest_point(target_points)
 
-        if virtual_key_input:
-            # Initialize keyboard tracking variables
-            self.virtual_keys = {}     # Dictionary to track virtual keys with timestamps
-            self.virtual_key_duration = 0.03  # Virtual key press duration in seconds
-        
         listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         listener.start()
         self.target_change = np.zeros((n_ctrl_parts, 3))
@@ -1225,34 +1270,8 @@ class InvPhyTrainerWarp:
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             cv2.imshow("Interactive Playground", frame)
-            key = cv2.waitKey(1)
+            cv2.waitKey(1)
 
-            if virtual_key_input:
-                # Handle virtual keyboard input through OpenCV window
-                if key != -1:
-                    key_char = chr(key & 0xFF).lower()
-                    if key_char in self.key_mappings:
-                        # Store virtual key with timestamp - refresh timestamp if already pressed
-                        self.virtual_keys[key_char] = time.time()
-                        self.pressed_keys.add(key_char)
-                    elif key == 27:  # ESC key to exit
-                        break
-                
-                # Process all keyboard inputs (both physical and virtual)
-                # For virtual keys, check if they're still active based on timestamp
-                current_time = time.time()
-                keys_to_remove = []
-                for k, press_time in self.virtual_keys.items():
-                    if current_time - press_time > self.virtual_key_duration:
-                        keys_to_remove.append(k)
-                
-                # Remove expired virtual keys
-                for k in keys_to_remove:
-                    if k in self.pressed_keys:
-                        self.pressed_keys.discard(k)
-                    if k in self.virtual_keys:
-                        del self.virtual_keys[k]
-            
             frame_comp_time = (
                 frame_timer.stop() + frame_setup_time
             )  # Total frame compositing time
@@ -1346,14 +1365,14 @@ class InvPhyTrainerWarp:
                         component_times[key] = component_times[key][-STATS_WINDOW:]
 
                 avg_fps = np.mean(fps_history)
-                print(
-                    f"\n--- Performance Stats (avg over last {len(fps_history)} frames) ---"
-                )
-                print(f"FPS: {avg_fps:.2f}")
+                # print(
+                #     f"\n--- Performance Stats (avg over last {len(fps_history)} frames) ---"
+                # )
+                # print(f"FPS: {avg_fps:.2f}")
 
                 # Calculate percentages for pie chart
                 total_avg = np.mean(component_times["total"])
-                print(f"Total Frame Time: {total_avg*1000:.2f} ms")
+                # print(f"Total Frame Time: {total_avg*1000:.2f} ms")
 
                 # Display individual component times
                 for key in [
@@ -1366,11 +1385,58 @@ class InvPhyTrainerWarp:
                 ]:
                     avg_time = np.mean(component_times[key])
                     percentage = (avg_time / total_avg) * 100
-                    print(
-                        f"{key.capitalize()}: {avg_time*1000:.2f} ms ({percentage:.1f}%)"
-                    )
+                    # print(
+                    #     f"{key.capitalize()}: {avg_time*1000:.2f} ms ({percentage:.1f}%)"
+                    # )
 
         listener.stop()
+
+    def save_target_state(self, gaussians, ctrl_pts, object_points, save_dir=DATA_DIR / "mpc_target_U"):
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        existing = sorted(save_dir.glob("target_*.pkl"))
+        idx = len(existing)
+
+        target_state = {
+            "ctrl_pts": ctrl_pts.detach().cpu().numpy(),
+            "gs_pts": gaussians.get_xyz.detach().cpu().numpy(),
+            "object_points": object_points.detach().cpu().numpy()
+        }
+
+        save_path = save_dir / f"target_{idx:03d}.pkl"
+        with open(save_path, "wb") as f:
+            pickle.dump(target_state, f)
+
+        print(f"\n✅ Saved target state to: {save_path}")
+        for k, v in target_state.items():
+            print(f"   - {k}: {v.shape}")
+
+    def save_init_state(self, gaussians, ctrl_pts, wp_x, springs, rest_lengths, save_dir=DATA_DIR / "mpc_init"):
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        idx = len(list(save_dir.glob("init_*.pkl")))
+
+        def to_numpy(x):
+            if isinstance(x, torch.Tensor):
+                return x.detach().cpu().numpy()
+            elif hasattr(x, 'numpy'):
+                return x.numpy()
+            else:
+                return np.array(x)
+
+        init_state = {
+            "ctrl_pts": to_numpy(ctrl_pts),
+            "gs_pts": to_numpy(gaussians.get_xyz),
+            "wp_x": to_numpy(wp_x),
+            "spring_indices": to_numpy(wp.to_torch(springs, requires_grad=False)),
+            "spring_rest_len": to_numpy(wp.to_torch(rest_lengths, requires_grad=False))
+        }
+
+        save_path = save_dir / f"init_{idx:03d}.pkl"
+        with open(save_path, "wb") as f:
+            pickle.dump(init_state, f)
+        print(f"✅ Saved init state to: {save_path}")
 
     def _transform_gs(self, gaussians, M, majority_scale=1):
 

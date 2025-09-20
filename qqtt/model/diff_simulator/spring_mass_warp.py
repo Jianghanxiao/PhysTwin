@@ -1,6 +1,9 @@
+# /workspace/PhysTwin/qqtt/model/diff_simulator/spring_mass_warp.py
+
 import torch
 from qqtt.utils import logger, cfg
 import warp as wp
+import numpy as np
 
 wp.init()
 wp.set_device("cuda:0")
@@ -9,8 +12,19 @@ if not cfg.use_graph:
     wp.config.verbose = True
     wp.config.verify_autograd_array_access = True
 
-
 class State:
+    # def __init__(self, wp_init_vertices, num_control_points):
+    #     self.wp_x = wp.zeros_like(wp_init_vertices, requires_grad=True)
+    #     self.wp_v_before_collision = wp.zeros_like(wp_init_vertices, requires_grad=True)
+    #     self.wp_v_before_ground = wp.zeros_like(wp_init_vertices, requires_grad=True)
+    #     self.wp_v = wp.zeros_like(self.wp_x, requires_grad=True)
+    #     self.wp_vertice_forces = wp.zeros_like(self.wp_x, requires_grad=True)
+    #     # No need to compute the gradient for the control points
+    #     self.wp_control_x = wp.zeros(
+    #         (num_control_points), dtype=wp.vec3, requires_grad=False
+    #     )
+    #     self.wp_control_v = wp.zeros_like(self.wp_control_x, requires_grad=False)
+
     def __init__(self, wp_init_vertices, num_control_points):
         self.wp_x = wp.zeros_like(wp_init_vertices, requires_grad=True)
         self.wp_v_before_collision = wp.zeros_like(wp_init_vertices, requires_grad=True)
@@ -19,7 +33,7 @@ class State:
         self.wp_vertice_forces = wp.zeros_like(self.wp_x, requires_grad=True)
         # No need to compute the gradient for the control points
         self.wp_control_x = wp.zeros(
-            (num_control_points), dtype=wp.vec3, requires_grad=False
+            (num_control_points), dtype=wp.vec3, requires_grad=True
         )
         self.wp_control_v = wp.zeros_like(self.wp_control_x, requires_grad=False)
 
@@ -41,26 +55,22 @@ class State:
         """Indicates whether the state arrays have gradient computation enabled."""
         return self.wp_x.requires_grad
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def copy_vec3(data: wp.array(dtype=wp.vec3), origin: wp.array(dtype=wp.vec3)):
     tid = wp.tid()
     origin[tid] = data[tid]
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def copy_int(data: wp.array(dtype=wp.int32), origin: wp.array(dtype=wp.int32)):
     tid = wp.tid()
     origin[tid] = data[tid]
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def copy_float(data: wp.array(dtype=wp.float32), origin: wp.array(dtype=wp.float32)):
     tid = wp.tid()
     origin[tid] = data[tid]
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def set_control_points(
     num_substeps: int,
     original_control_point: wp.array(dtype=wp.vec3),
@@ -76,7 +86,17 @@ def set_control_points(
         original_control_point[tid]
         + (target_control_point[tid] - original_control_point[tid]) * t
     )
-
+# @wp.kernel(enable_backward=True)
+# def set_control_points(
+#     num_substeps: int,
+#     original_control_point: wp.array(dtype=wp.vec3),
+#     target_control_point: wp.array(dtype=wp.vec3),
+#     step: int,
+#     control_x: wp.array(dtype=wp.vec3),
+# ):
+#     tid = wp.tid()
+#     # 规划阶段：每个 substep 直接使用 target（去掉线性插值）
+#     control_x[tid] = target_control_point[tid]
 
 @wp.kernel
 def eval_springs(
@@ -105,7 +125,7 @@ def eval_springs(
             v1 = control_v[idx1 - num_object_points]
         else:
             x1 = x[idx1]
-            v1 = v[idx1]
+            v1 = v[idx1]        
         if idx2 >= num_object_points:
             x2 = control_x[idx2 - num_object_points]
             v2 = control_v[idx2 - num_object_points]
@@ -136,7 +156,6 @@ def eval_springs(
         if idx2 < num_object_points:
             wp.atomic_sub(f, idx2, overall_force)
 
-
 @wp.kernel
 def update_vel_from_force(
     v: wp.array(dtype=wp.vec3),
@@ -160,7 +179,6 @@ def update_vel_from_force(
     v2 = v1 * drag_damping_factor
 
     v_new[tid] = v2
-
 
 @wp.func
 def loop(
@@ -225,8 +243,7 @@ def loop(
 
     return valid_count, J_sum
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def update_potential_collision(
     x: wp.array(dtype=wp.vec3),
     masks: wp.array(dtype=wp.int32),
@@ -255,7 +272,6 @@ def update_potential_collision(
             if mask1 != mask2 and dis_len < collision_dist:
                 collision_indices[i][collision_number[i]] = index
                 collision_number[i] += 1
-
 
 @wp.kernel
 def object_collision(
@@ -296,7 +312,6 @@ def object_collision(
         v_new[tid] = v1 - J_average / m1
     else:
         v_new[tid] = v1
-
 
 @wp.kernel
 def integrate_ground_collision(
@@ -349,8 +364,7 @@ def integrate_ground_collision(
     x_new[tid] = x0 + v0 * toi + v1 * (dt - toi)
     v_new[tid] = v1
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def compute_distances(
     pred: wp.array(dtype=wp.vec3),
     gt: wp.array(dtype=wp.vec3),
@@ -364,8 +378,7 @@ def compute_distances(
     else:
         distances[i, j] = 1e6
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def compute_neigh_indices(
     distances: wp.array2d(dtype=float),
     neigh_indices: wp.array(dtype=wp.int32),
@@ -378,7 +391,6 @@ def compute_neigh_indices(
             min_dist = distances[i, j]
             min_index = j
     neigh_indices[i] = min_index
-
 
 @wp.kernel
 def compute_chamfer_loss(
@@ -396,7 +408,6 @@ def compute_chamfer_loss(
         min_dist = wp.length(min_pred - gt[i])
         final_min_dist = loss_weight * min_dist * min_dist / float(num_valid)
         wp.atomic_add(chamfer_loss, 0, final_min_dist)
-
 
 @wp.kernel
 def compute_track_loss(
@@ -444,13 +455,11 @@ def compute_track_loss(
 
         wp.atomic_add(track_loss, 0, final_track_loss)
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def set_int(input: int, output: wp.array(dtype=wp.int32)):
     output[0] = input
 
-
-@wp.kernel(enable_backward=False)
+@wp.kernel(enable_backward=True)
 def update_acc(
     v1: wp.array(dtype=wp.vec3),
     v2: wp.array(dtype=wp.vec3),
@@ -458,7 +467,6 @@ def update_acc(
 ):
     tid = wp.tid()
     prev_acc[tid] = v2[tid] - v1[tid]
-
 
 @wp.kernel
 def compute_acc_loss(
@@ -509,7 +517,6 @@ def compute_acc_loss(
 
         wp.atomic_add(acc_loss, 0, final_acc_loss)
 
-
 @wp.kernel
 def compute_final_loss(
     chamfer_loss: wp.array(dtype=wp.float32),
@@ -519,6 +526,13 @@ def compute_final_loss(
 ):
     loss[0] = chamfer_loss[0] + track_loss[0] + acc_loss[0]
 
+@wp.kernel
+def compute_mpc_final_loss(
+    chamfer_loss: wp.array(dtype=wp.float32),
+    track_loss: wp.array(dtype=wp.float32),
+    loss: wp.array(dtype=wp.float32),
+):
+    loss[0] = chamfer_loss[0] + track_loss[0]
 
 @wp.kernel
 def compute_simple_loss(
@@ -803,6 +817,13 @@ class SpringMassSystemWarp:
         else:
             self.tape = wp.Tape()
 
+    def get_controller_state(self) -> torch.Tensor:
+        """
+        Return the current controller points.
+        Assumes controller_points[0] is always the current state.
+        """
+        return self.controller_points[0].detach().clone()
+
     def set_controller_target(self, frame_idx, pure_inference=False):
         if self.controller_points is not None:
             # Set the controller points
@@ -865,7 +886,7 @@ class SpringMassSystemWarp:
             inputs=[controller_interactive],
             outputs=[self.wp_target_control_point],
         )
-
+    
     def set_init_state(self, wp_x, wp_v, pure_inference=False):
         # Detach and clone and set requires_grad=True
         assert (
@@ -1100,6 +1121,196 @@ class SpringMassSystemWarp:
             outputs=[self.loss],
         )
 
+
+    """
+    === simple_mpc ===
+    """
+    @wp.kernel
+    def add_const_inplace(val: float, out: wp.array(dtype=wp.float32)):
+        # 将常数 val 加到 out[0]
+        i = wp.tid()   # dim=1 -> i=0
+        out[i] = out[i] + val
+
+    @wp.kernel(enable_backward=True)
+    def mean_pairwise_l2(a: wp.array(dtype=wp.vec3),
+                        b: wp.array(dtype=wp.vec3),
+                        invN: float,
+                        out: wp.array(dtype=wp.float32)):
+        i = wp.tid()
+        d = a[i] - b[i]
+        wp.atomic_add(out, 0, invN * wp.dot(d, d))
+
+    @wp.kernel(enable_backward=True)
+    def mean_action_l2(actions: wp.array(dtype=wp.vec3),
+                    invM: float,
+                    out: wp.array(dtype=wp.float32)):
+        i = wp.tid()
+        v = actions[i]
+        wp.atomic_add(out, 0, invM * wp.dot(v, v))
+        
+    def calculate_mpc_loss_simple(self, action_seq_wp=None, lam=1e-3):
+        N = self.num_object_points
+        invN = 1.0 / float(N)
+        tmp = wp.zeros(1, dtype=wp.float32, device="cuda", requires_grad=True)
+        wp.launch(self.mean_pairwise_l2, dim=N,
+                inputs=[self.wp_states[-1].wp_x, self.wp_current_object_points, invN],
+                outputs=[tmp])
+
+        if action_seq_wp is not None:
+            M = action_seq_wp.shape[0]
+            invM = 1.0 / float(M)
+            reg = wp.zeros(1, dtype=wp.float32, device="cuda", requires_grad=True)
+            wp.launch(self.mean_action_l2, dim=M, inputs=[action_seq_wp, invM], outputs=[reg])
+            @wp.kernel(enable_backward=True)
+            def axpy(alpha: float, x: wp.array(dtype=wp.float32), y: wp.array(dtype=wp.float32)):
+                y[0] = y[0] + alpha * x[0]
+            wp.launch(axpy, dim=1, inputs=[lam, reg], outputs=[tmp])
+
+        self.loss = tmp
+        return wp.to_torch(self.loss, requires_grad=True)
+    """
+    === simple_mpc ===
+    """
+
+    @wp.kernel(enable_backward=True)
+    def add_vec3(a: wp.array(dtype=wp.vec3),
+                b: wp.array(dtype=wp.vec3),
+                out: wp.array(dtype=wp.vec3)):
+        i = wp.tid()
+        out[i] = a[i] + b[i]
+
+    @wp.kernel(enable_backward=True)
+    def copy_row_vec3(
+        src: wp.array(dtype=wp.vec3),
+        row_idx: int,                  # 要拷贝的一行
+        num_ctrl: int,                 # 每行控制点个数
+        dst: wp.array(dtype=wp.vec3)   # shape=(num_ctrl,)
+    ):
+        i = wp.tid()
+        dst[i] = src[row_idx * num_ctrl + i]
+
+
+    """
+    === MPC Simulation construct ===
+    """
+    def restore_from_snapshot(self, snap):
+        wp.launch(copy_vec3, dim=self.num_object_points,
+                inputs=[snap["x0"]], outputs=[self.wp_states[0].wp_x])
+        wp.launch(copy_vec3, dim=self.num_object_points,
+                inputs=[snap["v0"]], outputs=[self.wp_states[0].wp_v])
+        wp.launch(copy_vec3, dim=self.num_control_points,
+                inputs=[snap["orig_cp"]], outputs=[self.wp_original_control_point])
+        wp.launch(copy_vec3, dim=self.num_control_points,
+                inputs=[snap["targ_cp"]], outputs=[self.wp_target_control_point])
+
+    def make_snapshot(self):
+        return dict(
+            x0=wp.clone(self.wp_states[0].wp_x, requires_grad=False),
+            v0=wp.clone(self.wp_states[0].wp_v, requires_grad=False),
+            orig_cp=wp.clone(self.wp_original_control_point, requires_grad=False),
+            targ_cp=wp.clone(self.wp_target_control_point, requires_grad=False),
+        )
+
+    def set_target_from_original_plus_delta(self, delta_arr):
+        wp.launch(self.add_vec3, dim=self.num_control_points,
+                inputs=[self.wp_original_control_point, delta_arr],
+                outputs=[self.wp_target_control_point])
+
+    def carry_state_end_to_begin(self):
+        wp.launch(copy_vec3, dim=self.num_object_points,
+                inputs=[self.wp_states[-1].wp_x], outputs=[self.wp_states[0].wp_x])
+        wp.launch(copy_vec3, dim=self.num_object_points,
+                inputs=[self.wp_states[-1].wp_v], outputs=[self.wp_states[0].wp_v])
+
+    def one_step_from_action(self, delta_arr, is_first_step):
+        if not is_first_step:
+            wp.launch(copy_vec3, dim=self.num_control_points,
+                    inputs=[self.wp_target_control_point],
+                    outputs=[self.wp_original_control_point])
+            self.carry_state_end_to_begin()
+        self.set_target_from_original_plus_delta(delta_arr)
+        self.step()
+
+    def rollout(self, action_slice):
+        """
+        串行 rollout：每一步
+        - original <- 上一步 target
+        - target   <- original + delta
+        - step()
+        - carry end->begin  (为下一步准备)
+        """
+        for j, df in enumerate(action_slice):
+            # 1) original <- 上一步 target（第一步相当于保持初始化的 original）
+            wp.launch(copy_vec3, dim=self.num_control_points,
+                    inputs=[self.wp_target_control_point],
+                    outputs=[self.wp_original_control_point])
+
+            # 2) target <- original + delta_full[j]
+            wp.launch(self.add_vec3, dim=self.num_control_points,
+                    inputs=[self.wp_original_control_point, df],
+                    outputs=[self.wp_target_control_point])
+
+            # 3) 走一步（内部 num_substeps 做线性插值 original->target）
+            self.step()
+
+            # 4) 把末帧拷回起点，下一宏步从末帧继续
+            self.carry_state_end_to_begin()
+
+    @wp.kernel(enable_backward=True)
+    def mean_vec3_l2(x: wp.array(dtype=wp.vec3),
+                    invN: float,
+                    out: wp.array(dtype=wp.float32)):
+        i = wp.tid()
+        wp.atomic_add(out, 0, invN * wp.dot(x[i], x[i]))
+
+    # 2-vector 动作 → 映射每个控制点的底层位移（tanh+scale 限制）
+    @wp.kernel(enable_backward=True)
+    def expand_row2_squash_scale(
+        action_2: wp.array(dtype=wp.vec3),     # (2,) ΔL, ΔR
+        left_mask: wp.array(dtype=wp.int32),   # (30,)
+        right_mask: wp.array(dtype=wp.int32),  # (30,)
+        scale: float,                          
+        out_delta: wp.array(dtype=wp.vec3)     # (30,)
+    ):
+        i = wp.tid()
+        wp_v = wp.vec3(0.0, 0.0, 0.0)
+        if left_mask[i] == 1:
+            v = action_2[0]
+            wp_v = v
+            # wp_v = wp.vec3(wp.tanh(v[0]), wp.tanh(v[1]), wp.tanh(v[2]))
+        elif right_mask[i] == 1:
+            v = action_2[1]
+            wp_v = v
+            # wp_v = wp.vec3(wp.tanh(v[0]), wp.tanh(v[1]), wp.tanh(v[2]))
+        out_delta[i] = wp_v * scale
+
+    def make_snapshot_all(self):
+        def _is_wp_array(x): return isinstance(x, wp.array)
+
+        snap = {}
+        for k, v in self.__dict__.items():
+            if _is_wp_array(v):
+                snap[k] = wp.clone(v, requires_grad=v.requires_grad)  # 关键：保留 flag
+            elif isinstance(v, (list, tuple)) and len(v) > 0 and _is_wp_array(v[0]):
+                snap[k] = [wp.clone(t, requires_grad=t.requires_grad) for t in v]
+        return snap
+
+    def restore_from_snapshot_all(self, snap):
+        def _is_wp_array(x): return isinstance(x, wp.array)
+        for k, v in snap.items():
+            if isinstance(v, list):
+                # 逐个克隆，同时保留各自的 requires_grad
+                new_list = [wp.clone(t, requires_grad=t.requires_grad) for t in v]
+                setattr(self, k, new_list)
+            elif _is_wp_array(v):
+                setattr(self, k, wp.clone(v, requires_grad=v.requires_grad))
+            else:
+                setattr(self, k, v)
+    """
+    === MPC Simulation construct ===
+    """
+
+
     def calculate_simple_loss(self):
         wp.launch(
             compute_simple_loss,
@@ -1121,7 +1332,6 @@ class SpringMassSystemWarp:
             self.acc_loss.zero_()
         self.loss.zero_()
 
-    # Functions used to load the parmeters
     def set_spring_Y(self, spring_Y):
         # assert spring_Y.shape[0] == self.n_springs
         wp.launch(
