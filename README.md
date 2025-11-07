@@ -257,7 +257,7 @@ If you are interested in collaborating or extending this work for your research,
 
 ## Projects using PhysTwin
 * **[NovaFlow: Zero-Shot Manipulation via Actionable Flow from Generated Videos](https://novaflow.lhy.xyz/).** Hongyu Li*, Lingfeng Sun*, Yafei Hu, Duy Ta, Jennifer Barry, George Konidaris, and Jiahui Fu
-* **[Real-to-Sim Robot Policy Evaluation with Gaussian Splatting Simulation of Soft-Body Interactions](https://real2sim-eval.github.io/)).** Kaifeng Zhang*, Shuo Sha*, Hanxiao Jiang, Matthew Loper, Hyunjong Song, Guangyan Cai, Zhuo Xu, Xiaochen Hu, Changxi Zheng, Yunzhu Li
+* **[Real-to-Sim Robot Policy Evaluation with Gaussian Splatting Simulation of Soft-Body Interactions](https://real2sim-eval.github.io/).** Kaifeng Zhang*, Shuo Sha*, Hanxiao Jiang, Matthew Loper, Hyunjong Song, Guangyan Cai, Zhuo Xu, Xiaochen Hu, Changxi Zheng, Yunzhu Li
 * ...
 
 ### Citation
