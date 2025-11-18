@@ -129,11 +129,11 @@ bash ./env_install/download_pretrained_models.sh
 
 ### Download the PhysTwin Data
 Download the original data, processed data, and results into the project's root folder. (The following sections will explain how to process the raw observations and obtain the training results.)
-- [data](https://drive.google.com/file/d/1A6X7X6yZFYJ8oo6Bd5LLn-RldeCKJw5Z/view?usp=sharing): this includes the original data for different cases and the processed data for quick run. The different case_name can be found under `different_types` folder.
-- [experiments_optimization](https://drive.google.com/file/d/1xKlk3WumFp1Qz31NB4DQxos8jMD_pBAt/view?usp=sharing): results of our first-stage zero-order optimization.
-- [experiments](https://drive.google.com/file/d/1hCGzdGlzL4qvZV3GzOCGiaVBshDgFKjq/view?usp=sharing): results of our second-order optimization.
-- [gaussian_output](https://drive.google.com/file/d/12EoxhEhE90NMAqLlQoj_zM_C63BOftNW/view?usp=sharing): results of our static gaussian appearance.
-- [(optional) additional_data](https://drive.google.com/file/d/1Q9AFDr_yQD-n5YNAe157hViTBC9mo876/view?usp=sharing): data for extra clothing demos not included in the original paper.
+- [data](https://huggingface.co/datasets/Jianghanxiao/PhysTwin/resolve/main/data.zip): this includes the original data for different cases and the processed data for quick run. The different case_name can be found under `different_types` folder.
+- [experiments_optimization](https://huggingface.co/datasets/Jianghanxiao/PhysTwin/resolve/main/experiments_optimization.zip): results of our first-stage zero-order optimization.
+- [experiments](https://huggingface.co/datasets/Jianghanxiao/PhysTwin/resolve/main/experiments.zip): results of our second-order optimization.
+- [gaussian_output](https://huggingface.co/datasets/Jianghanxiao/PhysTwin/resolve/main/gaussian_output.zip): results of our static gaussian appearance.
+- [(optional) additional_data](https://huggingface.co/datasets/Jianghanxiao/PhysTwin/resolve/main/additional_data.zip): data for extra clothing demos not included in the original paper.
 
 ### Play with the Interactive Playground
 Use the previously constructed PhysTwin to explore the interactive playground. Users can interact with the pre-built PhysTwin using keyboard. The next section will provide a detailed guide on how to construct the PhysTwin from the original data.
