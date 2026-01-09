@@ -1,13 +1,6 @@
 """author: Can Li, 2025-12-27"""
-# Set environment variables for headless mode before importing any OpenGL-dependent libraries
-import os
-# Prevent OpenGL initialization attempts in headless environments
-os.environ['PYGLET_HEADLESS'] = '1'
-os.environ['DISPLAY'] = ''  # Prevent X11 initialization attempts
-os.environ['PYOPENGL_PLATFORM'] = 'osmesa'  # Use OSMesa (software rendering) instead of hardware OpenGL
 
-from qqtt import InvPhyTrainerWarp
-from qqtt.utils import logger, cfg
+import os
 from datetime import datetime
 import random
 import numpy as np
@@ -21,6 +14,15 @@ import queue
 import threading
 import time
 import cv2
+
+from qqtt import InvPhyTrainerWarp
+from qqtt.utils import logger, cfg
+
+# Set environment variables for headless mode before importing any OpenGL-dependent libraries
+# (Actual libstdc++ preloading and Warp initialization are handled in the launcher script.)
+os.environ.setdefault("PYGLET_HEADLESS", "1")
+os.environ.setdefault("DISPLAY", "")
+os.environ.setdefault("PYOPENGL_PLATFORM", "osmesa")  # Use OSMesa (software rendering) instead of hardware OpenGL
 
 
 def set_all_seeds(seed):
@@ -426,9 +428,21 @@ def create_gradio_interface(playground):
         gr.Markdown("# PhysTwin Interactive Playground")
         gr.Markdown("Control the physics simulation using the buttons below.")
         
+        # Layout: center the interactive playground image, put status text below
         with gr.Row():
-            image_output = gr.Image(label="Interactive Playground", type="numpy")
-            status_text = gr.Textbox(label="Status", value="Not started", interactive=False)
+            gr.Column(scale=1)  # left spacer
+            with gr.Column(scale=2):
+                image_output = gr.Image(
+                    label="Interactive Playground",
+                    type="numpy",
+                )
+            gr.Column(scale=1)  # right spacer
+        
+        status_text = gr.Textbox(
+            label="Status",
+            value="Not started",
+            interactive=False,
+        )
         
         with gr.Row():
             start_btn = gr.Button("Start Simulation", variant="primary")
@@ -674,9 +688,14 @@ if __name__ == "__main__":
     
     # Create and launch Gradio interface
     demo = create_gradio_interface(playground)
-    demo.launch(
-        server_name=args.server_name,
-        server_port=args.server_port,
-        share=args.share,
-    )
+
+    # NOTE: Temporarily disable launch to debug LLVM CommandLine error.
+    # If running without launch works, the issue is likely triggered during Gradio server startup.
+    # Uncomment the lines below once the environment-side LLVM conflict is resolved.
+    #
+    # demo.launch(
+    #     server_name=args.server_name,
+    #     server_port=args.server_port,
+    #     share=args.share,
+    # )
 

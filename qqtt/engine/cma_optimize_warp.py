@@ -5,7 +5,14 @@ import open3d as o3d
 import numpy as np
 import torch
 from tqdm import tqdm
+
+# CRITICAL: Clear sys.argv before importing warp to prevent LLVM command-line option conflicts
+import sys
+_original_argv_cma = sys.argv.copy()
+sys.argv = [sys.argv[0]]  # Keep only script name
 import warp as wp
+# Restore argv after warp import
+sys.argv = _original_argv_cma
 import cma
 import pickle
 import os
