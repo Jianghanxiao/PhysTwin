@@ -9,13 +9,30 @@ import torch
 import wandb
 import os
 from tqdm import tqdm
+
+# CRITICAL: Clear sys.argv before importing warp to prevent LLVM command-line option conflicts
+import sys
+_original_argv_trainer = sys.argv.copy()
+sys.argv = [sys.argv[0]]  # Keep only script name
 import warp as wp
+# Restore argv after warp import
+sys.argv = _original_argv_trainer
 from scipy.spatial import KDTree
 import pickle
 import cv2
-from pynput import keyboard
-import pyrender
-import trimesh
+# Optional imports for headless environments
+try:
+    from pynput import keyboard
+except (ImportError, OSError):
+    keyboard = None
+try:
+    import pyrender
+except (ImportError, OSError):
+    pyrender = None
+try:
+    import trimesh
+except (ImportError, OSError):
+    trimesh = None
 import matplotlib.pyplot as plt
 
 from gaussian_splatting.scene.gaussian_model import GaussianModel
@@ -1070,8 +1087,13 @@ class InvPhyTrainerWarp:
             self.virtual_keys = {}     # Dictionary to track virtual keys with timestamps
             self.virtual_key_duration = 0.03  # Virtual key press duration in seconds
         
-        listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
-        listener.start()
+        # Only start keyboard listener if pynput is available (not in headless mode)
+        listener = None
+        if keyboard is not None:
+            listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
+            listener.start()
+        else:
+            logger.warning("pynput not available (headless mode). Keyboard input will be disabled. Use virtual_key_input mode or Gradio interface.")
         self.target_change = np.zeros((n_ctrl_parts, 3))
 
         ############## Temporary timer ##############
@@ -1370,7 +1392,8 @@ class InvPhyTrainerWarp:
                         f"{key.capitalize()}: {avg_time*1000:.2f} ms ({percentage:.1f}%)"
                     )
 
-        listener.stop()
+        if listener is not None:
+            listener.stop()
 
     def _transform_gs(self, gaussians, M, majority_scale=1):
 

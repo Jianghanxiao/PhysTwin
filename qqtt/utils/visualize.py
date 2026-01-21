@@ -4,8 +4,15 @@ import torch
 import time
 import cv2
 from .config import cfg
-import pyrender
-import trimesh
+# Optional imports for headless environments
+try:
+    import pyrender
+except (ImportError, OSError):
+    pyrender = None
+try:
+    import trimesh
+except (ImportError, OSError):
+    trimesh = None
 
 
 def visualize_pc(

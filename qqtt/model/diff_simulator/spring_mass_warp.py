@@ -1,9 +1,30 @@
 import torch
 from qqtt.utils import logger, cfg
-import warp as wp
 
-wp.init()
-wp.set_device("cuda:0")
+# CRITICAL: Clear sys.argv before importing warp to prevent LLVM command-line option conflicts
+# LLVM's command-line parser is initialized when the warp module is imported
+import sys
+_original_argv_spring_mass = sys.argv.copy()
+sys.argv = [sys.argv[0]]  # Keep only script name
+import warp as wp
+# Restore argv after warp import
+sys.argv = _original_argv_spring_mass
+
+# Initialize warp only if not already initialized to avoid LLVM command-line option conflicts
+# Use a module-level flag to track initialization
+if not hasattr(wp, '_warp_initialized_by_spring_mass'):
+    try:
+        wp.init()
+        wp.set_device("cuda:0")
+        wp._warp_initialized_by_spring_mass = True
+    except Exception:
+        # If init fails (e.g., already initialized by another module), 
+        # try to set device anyway
+        try:
+            wp.set_device("cuda:0")
+        except:
+            pass
+
 if not cfg.use_graph:
     wp.config.mode = "debug"
     wp.config.verbose = True
