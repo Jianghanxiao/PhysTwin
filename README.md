@@ -35,6 +35,8 @@ This repository contains the official implementation of the **PhysTwin** framewo
 
 - **Actively Developing:** In the long term, we aim to develop a comprehensive physics simulator focused on real-to-sim, serving as an easy-to-use platform for XR, VR, and robotics applications. **Feel free to reach out via email if you’re also interested in this direction and would like to collaborate on related research projects.**
 
+- **[26.3.4] To Release:** In our latest paper, we will release a batched version of the system, achieving over 300× speedup for accelerated computation.
+
 - **[26.1.21] Add Web Visualization for Headless Server Runs:** Thanks to @CAN-Lee, The interactive playground is now supported through Gradio, enabling web-based interaction even when running on a server without a display. (See below for detailed instructions)
 
 - **[25.11.6] Extend PhysTwin wiht robot physics support:** Explore our extended system [Real2Sim-Eval](https://real2sim-eval.github.io/), which supports both keyboard and Gello-based robot control, enabling physics-based interactions with constructed PhysTwins. We are actively developing a full robotics simulator that will serve as an easy-to-use platform for diverse research applications. A demo version will also be released in this repository soon.
