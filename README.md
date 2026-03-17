@@ -286,6 +286,7 @@ If you are interested in collaborating or extending this work for your research,
 * **[Real-to-Sim Robot Policy Evaluation with Gaussian Splatting Simulation of Soft-Body Interactions](https://real2sim-eval.github.io/)**
 * **[PhysWorld: From Real Videos to World Models of Deformable Objects via Physics-Aware Demonstration Synthesis](https://arxiv.org/abs/2510.21447)**
 * **[NeuSpring: Neural Spring Fields for Reconstruction and Simulation of Deformable Objects from Videos](https://arxiv.org/abs/2511.08310)**
+* **[Cool PhysTwin Data Collection Pipeline using SO-101](https://github.com/TabithaKO/PhysTwin)**
 * ...
 
 ### Citation
