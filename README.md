@@ -37,7 +37,9 @@ This repository contains the official implementation of the **PhysTwin** framewo
 
 - **To Release:** In our latest project, we will release a batched version of the system, achieving over 300× speedup for accelerated computation and an average 6K FPS throughput (with a maximum of 30K FPS in some cases) in the batch simulation setting. This version also supports low-power execution on edge devices, achieving real-time performance on Jetson-like XR platforms. (A game demo in which an RL policy for rope manipulation is trained in just 3 minutes using the batched simulator.)
 
-![RL_game](./assets/RL_game.gif)
+<p align="center">
+  <img src="./assets/RL_game.gif" width="50%">
+</p>
 
 - **[26.3.16] MPPI Planning with PhysTwin::** We provide an example codebase in [PhysTwin-MPC](https://github.com/Jianghanxiao/PhysTwin-MPC) demonstrating how to leverage PhysTwin for MPPI-based robot planning. The repository is intended as a reference implementation; users should adapt it to their specific hardware setups, camera configurations, and application requirements.
 
