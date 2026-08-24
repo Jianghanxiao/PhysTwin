@@ -80,11 +80,12 @@
 
 - **Actively Developing:** In the long term, we aim to develop a comprehensive physics simulator focused on real-to-sim, serving as an easy-to-use platform for XR, VR, and robotics applications. **Feel free to reach out via email if you’re also interested in this direction and would like to collaborate on related research projects.**
 
-- **Separate upcoming project — Boba:** In our latest project, we will release a batched version of the system, achieving over 300× speedup for accelerated computation and an average 6K FPS throughput (with a maximum of 30K FPS in some cases) in the batch simulation setting. This version also supports low-power execution on edge devices, achieving real-time performance on Jetson-like XR platforms. (A game demo in which an RL policy for rope manipulation is trained in just 3 minutes using the batched simulator.)
-
-<p align="center">
-  <img src="./assets/RL_game.gif" width="50%">
-</p>
+- **[26.8.24] We released [Boba: Batched Simulation for Physics-Based Gaussian Digital Twins](https://jianxiapyh.github.io/Boba-project-page/), our latest batched simulator for PhysTwin, accepted to ECCV 2026.** Boba executes many independent physical-twin rollouts on one GPU, reaching **3,310 FPS average aggregate throughput** on an RTX 4090—**more than 150× higher throughput** than PhysTwin Baseline. The demo below trains an RL rope-manipulation policy in just 3 minutes.
+  <p align="center">
+    <a href="https://jianxiapyh.github.io/Boba-project-page/">
+      <img src="./assets/RL_game.gif" alt="Boba batched-simulation RL rope-manipulation game demo" width="50%">
+    </a>
+  </p>
 
 - **[26.7.10] More PhysTwin-like data with [Deform360](https://deform360.lhy.xyz/).** Our new project, **Deform360: A Massive Multi-view Visuotactile Dataset for Deformable World Models**, is now accepted to ECCV 2026. It provides large-scale real-world data for deformable dynamics: **198** daily-life objects, **1,980** interaction sequences, and **215+ hours** of observations from **41** surround-view cameras and bimanual tactile grippers.
   <p align="center">
