@@ -1,5 +1,11 @@
 from qqtt.data import RealData, SimpleData
 from qqtt.utils import logger, visualize_pc, cfg
+from qqtt.utils.spring_io import (
+    spring_topology_state,
+    ConfigSpringTopology,
+    LEGACY,
+    MATCH,
+)
 from qqtt.model.diff_simulator import (
     SpringMassSystemWarp,
 )
@@ -119,36 +125,17 @@ class InvPhyTrainerWarp:
             controller_max_neighbours=cfg.controller_max_neighbours,
             mask=self.init_masks,
         )
-
-        self.simulator = SpringMassSystemWarp(
-            self.init_vertices,
+        # Immutable copy of the topology rebuilt from the config. Checkpoints
+        # are always resolved against this, never against springs taken from
+        # a previously loaded checkpoint
+        self._config_topology = ConfigSpringTopology(
             self.init_springs,
             self.init_rest_lengths,
-            self.init_masses,
-            dt=cfg.dt,
-            num_substeps=cfg.num_substeps,
-            spring_Y=cfg.init_spring_Y,
-            collide_elas=cfg.collide_elas,
-            collide_fric=cfg.collide_fric,
-            dashpot_damping=cfg.dashpot_damping,
-            drag_damping=cfg.drag_damping,
-            collide_object_elas=cfg.collide_object_elas,
-            collide_object_fric=cfg.collide_object_fric,
-            init_masks=self.init_masks,
-            collision_dist=cfg.collision_dist,
-            init_velocities=self.init_velocities,
-            num_object_points=self.num_all_points,
-            num_surface_points=self.num_surface_points,
-            num_original_points=self.num_original_points,
-            controller_points=self.controller_points,
-            reverse_z=cfg.reverse_z,
-            spring_Y_min=cfg.spring_Y_min,
-            spring_Y_max=cfg.spring_Y_max,
-            gt_object_points=self.object_points,
-            gt_object_visibilities=self.object_visibilities,
-            gt_object_motions_valid=self.object_motions_valid,
-            self_collision=cfg.self_collision,
+            self.num_object_springs,
+            self.init_vertices,
         )
+
+        self._build_simulator()
 
         if not pure_inference_mode:
             self.optimizer = torch.optim.Adam(
@@ -180,6 +167,71 @@ class InvPhyTrainerWarp:
             if not os.path.exists(f"{cfg.base_dir}/train"):
                 # Create directory if it doesn't exist
                 os.makedirs(f"{cfg.base_dir}/train")
+
+    def _build_simulator(self):
+        # Kept in one place so the simulator can be rebuilt with a different
+        # spring topology when loading a checkpoint that stores its own springs
+        self.simulator = SpringMassSystemWarp(
+            self.init_vertices,
+            self.init_springs,
+            self.init_rest_lengths,
+            self.init_masses,
+            dt=cfg.dt,
+            num_substeps=cfg.num_substeps,
+            spring_Y=cfg.init_spring_Y,
+            collide_elas=cfg.collide_elas,
+            collide_fric=cfg.collide_fric,
+            dashpot_damping=cfg.dashpot_damping,
+            drag_damping=cfg.drag_damping,
+            collide_object_elas=cfg.collide_object_elas,
+            collide_object_fric=cfg.collide_object_fric,
+            init_masks=self.init_masks,
+            collision_dist=cfg.collision_dist,
+            init_velocities=self.init_velocities,
+            num_object_points=self.num_all_points,
+            num_surface_points=self.num_surface_points,
+            num_original_points=self.num_original_points,
+            controller_points=self.controller_points,
+            reverse_z=cfg.reverse_z,
+            spring_Y_min=cfg.spring_Y_min,
+            spring_Y_max=cfg.spring_Y_max,
+            gt_object_points=self.object_points,
+            gt_object_visibilities=self.object_visibilities,
+            gt_object_motions_valid=self.object_motions_valid,
+            self_collision=cfg.self_collision,
+        )
+
+    def _load_checkpoint_springs(self, checkpoint):
+        # Use the spring topology saved in the checkpoint when there is one, so
+        # each learned spring_Y stays attached to the spring it was trained on.
+        # Older checkpoints have no saved topology and use the springs rebuilt
+        # from the config, even if an earlier checkpoint replaced them.
+        springs, rest_lengths, num_object_springs, status = (
+            self._config_topology.resolve(checkpoint)
+        )
+        if status == LEGACY:
+            logger.info(
+                "Checkpoint has no saved springs, using springs rebuilt from the config"
+            )
+        elif status == MATCH:
+            logger.info("Saved springs match the springs rebuilt from the config")
+        else:
+            logger.warning(
+                f"Springs rebuilt from the config ({self._config_topology.num_springs}) "
+                f"differ from the springs saved in the checkpoint ({len(springs)}), "
+                "using the saved springs"
+            )
+
+        unchanged = (
+            springs.shape == self.init_springs.shape
+            and torch.equal(springs, self.init_springs)
+            and torch.equal(rest_lengths, self.init_rest_lengths)
+        )
+        self.init_springs = springs
+        self.init_rest_lengths = rest_lengths
+        self.num_object_springs = num_object_springs
+        if not unchanged:
+            self._build_simulator()
 
     def _init_start(
         self,
@@ -429,6 +481,9 @@ class InvPhyTrainerWarp:
                     ),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                 }
+                cur_model.update(
+                    spring_topology_state(self.init_springs, self.init_rest_lengths)
+                )
                 if best_loss == None or total_loss < best_loss:
                     # Remove old best model file if it exists
                     if best_loss is not None:
@@ -469,6 +524,7 @@ class InvPhyTrainerWarp:
             collide_object_fric = checkpoint["collide_object_fric"]
             num_object_springs = checkpoint["num_object_springs"]
 
+            self._load_checkpoint_springs(checkpoint)
             assert (
                 len(spring_Y) == self.simulator.n_springs
             ), "Check if the loaded checkpoint match the config file to connect the springs"
@@ -950,6 +1006,7 @@ class InvPhyTrainerWarp:
         collide_object_fric = checkpoint["collide_object_fric"]
         num_object_springs = checkpoint["num_object_springs"]
 
+        self._load_checkpoint_springs(checkpoint)
         assert (
             len(spring_Y) == self.simulator.n_springs
         ), "Check if the loaded checkpoint match the config file to connect the springs"
@@ -1446,6 +1503,7 @@ class InvPhyTrainerWarp:
         collide_object_fric = checkpoint["collide_object_fric"]
         num_object_springs = checkpoint["num_object_springs"]
 
+        self._load_checkpoint_springs(checkpoint)
         assert (
             len(spring_Y) == self.simulator.n_springs
         ), "Check if the loaded checkpoint match the config file to connect the springs"
@@ -1788,6 +1846,7 @@ class InvPhyTrainerWarp:
         collide_object_fric = checkpoint["collide_object_fric"]
         num_object_springs = checkpoint["num_object_springs"]
 
+        self._load_checkpoint_springs(checkpoint)
         assert (
             len(spring_Y) == self.simulator.n_springs
         ), "Check if the loaded checkpoint match the config file to connect the springs"
